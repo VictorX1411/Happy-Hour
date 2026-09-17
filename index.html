@@ -141,18 +141,92 @@
     finally{busy=false}
   }
 
-  async function startScanner(){
-    try{
-      scanner ||= new Html5Qrcode('reader');
-      await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},register);
-      $('start').disabled=true;$('stop').disabled=false;
-    }catch(error){show('error','Não foi possível abrir a câmera','Use HTTPS, permita a câmera ou tente outro navegador.')}
+  async function startScanner() {
+  try {
+    if (!scanner) {
+      scanner = new Html5Qrcode('reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE
+        ],
+        verbose: false
+      });
+    }
+
+    const cameras = await Html5Qrcode.getCameras();
+
+    if (!cameras || cameras.length === 0) {
+      throw new Error('Nenhuma câmera encontrada.');
+    }
+
+    const rearCamera =
+      cameras.find(camera =>
+        /back|rear|traseira|environment/i.test(camera.label)
+      ) || cameras[cameras.length - 1];
+
+    const config = {
+      fps: 15,
+
+      qrbox: (width, height) => {
+        const size = Math.floor(
+          Math.min(width, height) * 0.75
+        );
+
+        return {
+          width: size,
+          height: size
+        };
+      },
+
+      aspectRatio: 1.0,
+      disableFlip: false
+    };
+
+    await scanner.start(
+      rearCamera.id,
+      config,
+
+      decodedText => {
+        register(decodedText);
+      },
+
+      () => {
+        // Leituras incompletas são ignoradas enquanto
+        // a câmera continua procurando pelo QR Code.
+      }
+    );
+
+    $('start').disabled = true;
+    $('stop').disabled = false;
+
+    show(
+      'warn',
+      'Câmera ativada',
+      'Centralize o QR Code no quadrado de leitura.'
+    );
+
+  } catch (error) {
+    console.error('Erro da câmera:', error);
+
+    show(
+      'error',
+      'Não foi possível iniciar o leitor',
+      error.message || 'Verifique a permissão da câmera.'
+    );
   }
-  async function stopScanner(){if(scanner?.isScanning)await scanner.stop();$('start').disabled=false;$('stop').disabled=true}
-  $('start').addEventListener('click',startScanner);$('stop').addEventListener('click',stopScanner);
-  $('manual').addEventListener('submit',event=>{event.preventDefault();register($('token').value);$('token').select()});
-  $('configure').addEventListener('click',()=>{const value=prompt('Cole a URL /exec da implantação do Apps Script:',configured()?apiUrl:'');if(value){apiUrl=value.trim();localStorage.setItem('happyHourApiUrl',apiUrl);loadStats()}});
-  loadStats();setInterval(loadStats,15000);
+}
+  async function stopScanner() {
+  try {
+    if (scanner && scanner.isScanning) {
+      await scanner.stop();
+    }
+
+    $('start').disabled = false;
+    $('stop').disabled = true;
+
+  } catch (error) {
+    console.error('Erro ao parar câmera:', error);
+  }
+}
 </script>
 </body>
 </html>
