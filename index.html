@@ -76,14 +76,9 @@
   };
 
   const timeout = setTimeout(() => {
-    cleanup();
-
-    show(
-      'error',
-      'Não foi possível carregar os totais',
-      'A API não respondeu dentro do tempo esperado.'
-    );
-  }, 10000);
+  cleanup();
+  console.warn('Atualização dos totais excedeu o tempo esperado.');
+}, 20000);
 
   window[callbackName] = data => {
     clearTimeout(timeout);
