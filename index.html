@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b2f52">
+  <title>Check-in | Happy Hour dos Professores</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root{--navy:#0b2f52;--blue:#164e7a;--gold:#d5a23f;--white:#fff;--muted:#d8e3ed;--green:#1f9d62;--red:#d64545;--amber:#b7791f}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;font-family:Arial,sans-serif;color:var(--white);background:radial-gradient(circle at 85% 10%,#1c5f91 0,transparent 28%),linear-gradient(145deg,#071f38,#0c365d 55%,#071f38)}
+    main{width:min(760px,100%);margin:auto;padding:20px 16px 40px} header{text-align:center;margin-bottom:18px} header h1{font-size:clamp(24px,6vw,38px);margin:8px 0;color:#f4cc72} header p{margin:0;color:var(--muted)}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.stat{background:#ffffff12;border:1px solid #ffffff28;border-radius:14px;padding:13px;text-align:center}.stat strong{display:block;font-size:28px}.stat span{font-size:12px;color:var(--muted)}
+    .panel{background:#fff;color:#16324a;border-radius:18px;padding:16px;box-shadow:0 18px 45px #0006}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    button,input{font:inherit;border-radius:10px;border:1px solid #cbd5df;padding:12px}button{cursor:pointer;background:var(--navy);color:#fff;border:none;font-weight:700}button.secondary{background:#e9eef3;color:#16324a}button:disabled{opacity:.55;cursor:not-allowed}
+    #reader{width:100%;overflow:hidden;border-radius:12px;background:#0a0a0a}.manual{display:flex;gap:8px;margin-top:12px}.manual input{min-width:0;flex:1}.result{margin-top:14px;border-radius:12px;padding:14px;display:none}.result.show{display:block}.result.ok{background:#dcfce7;color:#166534}.result.warn{background:#fff4d6;color:#8a5a00}.result.error{background:#fee2e2;color:#991b1b}.result strong{display:block;font-size:20px;margin-bottom:4px}
+    .config{margin-top:16px;font-size:12px;color:var(--muted);text-align:center}.config button{padding:7px 10px;font-size:12px;background:#ffffff18}.pulse{animation:pulse .45s ease}@keyframes pulse{50%{transform:scale(1.015)}}
+    @media(max-width:520px){.stat{padding:10px 6px}.stat strong{font-size:23px}.manual{flex-direction:column}}
+  </style>
+</head>
+<body>
+<main>
+  <header><h1>HAPPY HOUR</h1><p>Check-in dos Professores</p></header>
+  <section class="stats" aria-label="Resumo do evento">
+    <div class="stat"><strong id="total">—</strong><span>TOTAL</span></div>
+    <div class="stat"><strong id="entries">—</strong><span>ENTRADAS</span></div>
+    <div class="stat"><strong id="pending">—</strong><span>PENDENTES</span></div>
+  </section>
+  <section class="panel">
+    <div class="toolbar"><button id="start">Abrir câmera</button><button id="stop" class="secondary" disabled>Parar câmera</button></div>
+    <div id="reader"></div>
+    <form id="manual" class="manual"><input id="token" autocomplete="off" placeholder="Cole ou digite o código do convite"><button>Confirmar</button></form>
+    <div id="result" class="result" role="status" aria-live="polite"></div>
+  </section>
+  <div class="config"><button id="configure">Configurar endereço da API</button></div>
+</main>
+<script>
+  const DEFAULT_API_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT_EXEC';
+  let apiUrl = localStorage.getItem('happyHourApiUrl') || DEFAULT_API_URL;
+  let scanner = null;
+  let busy = false;
+  let lastToken = '';
+  let lastAt = 0;
+
+  const $ = id => document.getElementById(id);
+  const clean = value => String(value || '').trim().toUpperCase().match(/HH26-[A-F0-9]{24}/)?.[0] || '';
+
+  function show(type, title, detail='') {
+    const box = $('result');
+    box.className = `result show ${type} pulse`;
+    box.innerHTML = `<strong>${escapeHtml(title)}</strong>${escapeHtml(detail)}`;
+    setTimeout(() => box.classList.remove('pulse'), 500);
+  }
+  function escapeHtml(value){const d=document.createElement('div');d.textContent=value;return d.innerHTML}
+  function setStats(stats){if(!stats)return;$('total').textContent=stats.total;$('entries').textContent=stats.entries;$('pending').textContent=stats.pending}
+  function configured(){return apiUrl.startsWith('https://script.google.com/macros/s/') && apiUrl.endsWith('/exec')}
+
+  async function loadStats(){
+    if(!configured()) return;
+    try{const response=await fetch(`${apiUrl}?action=stats`);setStats(await response.json())}catch(_){/* mantém o leitor disponível */}
+  }
+
+  async function register(raw){
+    const token=clean(raw);
+    if(!token){show('error','QR Code inválido','O código lido não pertence a este evento.');return}
+    const now=Date.now();
+    if(token===lastToken && now-lastAt<4000)return;
+    lastToken=token;lastAt=now;
+    if(!configured()){show('warn','Configure a API','Informe o endereço /exec do Apps Script.');return}
+    if(busy)return;busy=true;
+    show('warn','Consultando convite…');
+    try{
+      const response=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token,operator:'LEITOR WEB'})});
+      const data=await response.json();
+      setStats(data.stats);
+      if(data.ok){show('ok',data.message,`${data.name} • ${data.unit}`);navigator.vibrate?.(150)}
+      else if(data.code==='ALREADY_USED'){show('warn',data.message,`${data.name} • ${data.checkedAt}`);navigator.vibrate?.([80,80,80])}
+      else{show('error',data.message,data.detail||'');navigator.vibrate?.(350)}
+    }catch(error){show('error','Falha de conexão','Verifique a internet e a configuração da API.')}
+    finally{busy=false}
+  }
+
+  async function startScanner(){
+    try{
+      scanner ||= new Html5Qrcode('reader');
+      await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},register);
+      $('start').disabled=true;$('stop').disabled=false;
+    }catch(error){show('error','Não foi possível abrir a câmera','Use HTTPS, permita a câmera ou tente outro navegador.')}
+  }
+  async function stopScanner(){if(scanner?.isScanning)await scanner.stop();$('start').disabled=false;$('stop').disabled=true}
+  $('start').addEventListener('click',startScanner);$('stop').addEventListener('click',stopScanner);
+  $('manual').addEventListener('submit',event=>{event.preventDefault();register($('token').value);$('token').select()});
+  $('configure').addEventListener('click',()=>{const value=prompt('Cole a URL /exec da implantação do Apps Script:',configured()?apiUrl:'');if(value){apiUrl=value.trim();localStorage.setItem('happyHourApiUrl',apiUrl);loadStats()}});
+  loadStats();setInterval(loadStats,15000);
+</script>
+</body>
+</html>
