@@ -2,186 +2,774 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover"
+  >
+
   <meta name="theme-color" content="#0b2f52">
+
   <title>Check-in | Happy Hour dos Professores</title>
+
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <style>
-    :root{--navy:#0b2f52;--blue:#164e7a;--gold:#d5a23f;--white:#fff;--muted:#d8e3ed;--green:#1f9d62;--red:#d64545;--amber:#b7791f}
-    *{box-sizing:border-box} body{margin:0;min-height:100vh;font-family:Arial,sans-serif;color:var(--white);background:radial-gradient(circle at 85% 10%,#1c5f91 0,transparent 28%),linear-gradient(145deg,#071f38,#0c365d 55%,#071f38)}
-    main{width:min(760px,100%);margin:auto;padding:20px 16px 40px} header{text-align:center;margin-bottom:18px} header h1{font-size:clamp(24px,6vw,38px);margin:8px 0;color:#f4cc72} header p{margin:0;color:var(--muted)}
-    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.stat{background:#ffffff12;border:1px solid #ffffff28;border-radius:14px;padding:13px;text-align:center}.stat strong{display:block;font-size:28px}.stat span{font-size:12px;color:var(--muted)}
-    .panel{background:#fff;color:#16324a;border-radius:18px;padding:16px;box-shadow:0 18px 45px #0006}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-    button,input{font:inherit;border-radius:10px;border:1px solid #cbd5df;padding:12px}button{cursor:pointer;background:var(--navy);color:#fff;border:none;font-weight:700}button.secondary{background:#e9eef3;color:#16324a}button:disabled{opacity:.55;cursor:not-allowed}
-    #reader{width:100%;overflow:hidden;border-radius:12px;background:#0a0a0a}.manual{display:flex;gap:8px;margin-top:12px}.manual input{min-width:0;flex:1}.result{margin-top:14px;border-radius:12px;padding:14px;display:none}.result.show{display:block}.result.ok{background:#dcfce7;color:#166534}.result.warn{background:#fff4d6;color:#8a5a00}.result.error{background:#fee2e2;color:#991b1b}.result strong{display:block;font-size:20px;margin-bottom:4px}
-    .config{margin-top:16px;font-size:12px;color:var(--muted);text-align:center}.config button{padding:7px 10px;font-size:12px;background:#ffffff18}.pulse{animation:pulse .45s ease}@keyframes pulse{50%{transform:scale(1.015)}}
-    @media(max-width:520px){.stat{padding:10px 6px}.stat strong{font-size:23px}.manual{flex-direction:column}}
-  </style>
-</head>
-<body>
-<main>
-  <header><h1>HAPPY HOUR</h1><p>Check-in dos Professores</p></header>
-  <section class="stats" aria-label="Resumo do evento">
-    <div class="stat"><strong id="total">—</strong><span>TOTAL</span></div>
-    <div class="stat"><strong id="entries">—</strong><span>ENTRADAS</span></div>
-    <div class="stat"><strong id="pending">—</strong><span>PENDENTES</span></div>
-  </section>
-  <section class="panel">
-    <div class="toolbar"><button id="start">Abrir câmera</button><button id="stop" class="secondary" disabled>Parar câmera</button></div>
-    <div id="reader"></div>
-    <form id="manual" class="manual"><input id="token" autocomplete="off" placeholder="Cole ou digite o código do convite"><button>Confirmar</button></form>
-    <div id="result" class="result" role="status" aria-live="polite"></div>
-  </section>
-  <div class="config"><button id="configure">Configurar endereço da API</button></div>
-</main>
-<script>
-  const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzYBHnl8Su8UAxsmvGT6QzKyZRDquuw2hlPCht3xHMQL3DGwF-qPOtfqcP-m59c_w-8/exec';
-  let apiUrl = localStorage.getItem('happyHourApiUrl') || DEFAULT_API_URL;
-  let scanner = null;
-  let busy = false;
-  let lastToken = '';
-  let lastAt = 0;
-
-  const $ = id => document.getElementById(id);
-  const clean = value => String(value || '').trim().toUpperCase().match(/HH26-[A-F0-9]{24}/)?.[0] || '';
-
-  function show(type, title, detail='') {
-    const box = $('result');
-    box.className = `result show ${type} pulse`;
-    box.innerHTML = `<strong>${escapeHtml(title)}</strong>${escapeHtml(detail)}`;
-    setTimeout(() => box.classList.remove('pulse'), 500);
-  }
-  function escapeHtml(value){const d=document.createElement('div');d.textContent=value;return d.innerHTML}
-  function setStats(stats){if(!stats)return;$('total').textContent=stats.total;$('entries').textContent=stats.entries;$('pending').textContent=stats.pending}
-  function configured(){return apiUrl.startsWith('https://script.google.com/macros/s/') && apiUrl.endsWith('/exec')}
-
- function loadStats() {
-  if (!configured()) {
-    show(
-      'warn',
-      'API não configurada',
-      'Configure o endereço do Apps Script.'
-    );
-    return;
-  }
-
-  const callbackName =
-    'happyHourStats_' + Date.now().toString(36);
-
-  const script = document.createElement('script');
-
-  const cleanup = () => {
-    delete window[callbackName];
-    script.remove();
-  };
-
-  const timeout = setTimeout(() => {
-  cleanup();
-  console.warn('Atualização dos totais excedeu o tempo esperado.');
-}, 20000);
-
-  window[callbackName] = data => {
-    clearTimeout(timeout);
-    cleanup();
-
-    if (data && typeof data.total !== 'undefined') {
-      setStats(data);
-    } else {
-      show(
-        'error',
-        'Resposta inválida da API',
-        'Os totais não foram encontrados.'
-      );
+    :root {
+      --navy: #0b2f52;
+      --blue: #164e7a;
+      --gold: #d5a23f;
+      --white: #ffffff;
+      --muted: #d8e3ed;
     }
-  };
 
-  script.onerror = () => {
-    clearTimeout(timeout);
-    cleanup();
+    * {
+      box-sizing: border-box;
+    }
 
-    show(
-      'error',
-      'Erro ao acessar a API',
-      'Verifique a implantação do Apps Script.'
-    );
-  };
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      color: var(--white);
+      background:
+        radial-gradient(
+          circle at 85% 10%,
+          #1c5f91 0,
+          transparent 28%
+        ),
+        linear-gradient(
+          145deg,
+          #071f38,
+          #0c365d 55%,
+          #071f38
+        );
+    }
 
-  script.src =
-    apiUrl +
-    '?action=stats&callback=' +
-    encodeURIComponent(callbackName) +
-    '&cache=' +
-    Date.now();
+    main {
+      width: min(760px, 100%);
+      margin: auto;
+      padding: 20px 16px 40px;
+    }
 
-  document.body.appendChild(script);
-}
+    header {
+      text-align: center;
+      margin-bottom: 18px;
+    }
 
-  async function register(raw){
-    const token=clean(raw);
-    if(!token){show('error','QR Code inválido','O código lido não pertence a este evento.');return}
-    const now=Date.now();
-    if(token===lastToken && now-lastAt<4000)return;
-    lastToken=token;lastAt=now;
-    if(!configured()){show('warn','Configure a API','Informe o endereço /exec do Apps Script.');return}
-    if(busy)return;busy=true;
-    show('warn','Consultando convite…');
-    try{
-      const response=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token,operator:'LEITOR WEB'})});
-      const data=await response.json();
-      setStats(data.stats);
-      if(data.ok){show('ok',data.message,`${data.name} • ${data.unit}`);navigator.vibrate?.(150)}
-      else if(data.code==='ALREADY_USED'){show('warn',data.message,`${data.name} • ${data.checkedAt}`);navigator.vibrate?.([80,80,80])}
-      else{show('error',data.message,data.detail||'');navigator.vibrate?.(350)}
-    }catch(error){show('error','Falha de conexão','Verifique a internet e a configuração da API.')}
-    finally{busy=false}
-  }
+    header h1 {
+      font-size: clamp(24px, 6vw, 38px);
+      margin: 8px 0;
+      color: #f4cc72;
+    }
 
-    async function stopScanner() {
-    try {
-      if (scanner && scanner.isScanning) {
-        await scanner.stop();
+    header p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    .stat {
+      background: #ffffff12;
+      border: 1px solid #ffffff28;
+      border-radius: 14px;
+      padding: 13px;
+      text-align: center;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 28px;
+    }
+
+    .stat span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: #ffffff;
+      color: #16324a;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 18px 45px #00000066;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    button,
+    input {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid #cbd5df;
+      padding: 12px;
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--navy);
+      color: #ffffff;
+      border: none;
+      font-weight: 700;
+    }
+
+    button.secondary {
+      background: #e9eef3;
+      color: #16324a;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    #reader {
+      display: none;
+      width: 100%;
+      min-height: 280px;
+      overflow: hidden;
+      border-radius: 12px;
+      background: #0a0a0a;
+      margin-bottom: 12px;
+    }
+
+    #reader video {
+      width: 100% !important;
+      border-radius: 12px;
+    }
+
+    .manual {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .manual input {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .result {
+      margin-top: 14px;
+      border-radius: 12px;
+      padding: 14px;
+      display: none;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    .result.ok {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .result.warn {
+      background: #fff4d6;
+      color: #8a5a00;
+    }
+
+    .result.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .result strong {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    .config {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .config button {
+      padding: 7px 10px;
+      font-size: 12px;
+      background: #ffffff18;
+    }
+
+    .pulse {
+      animation: pulse 0.45s ease;
+    }
+
+    @keyframes pulse {
+      50% {
+        transform: scale(1.015);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .stat {
+        padding: 10px 6px;
       }
 
-      $('start').disabled = false;
-      $('stop').disabled = true;
+      .stat strong {
+        font-size: 23px;
+      }
 
-    } catch (error) {
-      console.error('Erro ao parar câmera:', error);
+      .manual {
+        flex-direction: column;
+      }
     }
-  }
+  </style>
+</head>
 
-  $('start').addEventListener('click', startScanner);
+<body>
+  <main>
+    <header>
+      <h1>HAPPY HOUR</h1>
+      <p>Check-in dos Professores</p>
+    </header>
 
-  $('stop').addEventListener('click', stopScanner);
+    <section class="stats" aria-label="Resumo do evento">
+      <div class="stat">
+        <strong id="total">—</strong>
+        <span>TOTAL</span>
+      </div>
 
-  $('manual').addEventListener('submit', event => {
-    event.preventDefault();
-    register($('token').value);
-    $('token').select();
-  });
+      <div class="stat">
+        <strong id="entries">—</strong>
+        <span>ENTRADAS</span>
+      </div>
 
-  $('configure').addEventListener('click', () => {
-    const value = prompt(
-      'Cole a URL /exec da implantação do Apps Script:',
-      configured() ? apiUrl : ''
+      <div class="stat">
+        <strong id="pending">—</strong>
+        <span>PENDENTES</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="toolbar">
+        <button id="start" type="button">
+          Abrir câmera
+        </button>
+
+        <button
+          id="stop"
+          type="button"
+          class="secondary"
+          disabled
+        >
+          Parar câmera
+        </button>
+      </div>
+
+      <div id="reader"></div>
+
+      <form id="manual" class="manual">
+        <input
+          id="token"
+          type="text"
+          autocomplete="off"
+          placeholder="Cole ou digite o código do convite"
+        >
+
+        <button type="submit">
+          Confirmar
+        </button>
+      </form>
+
+      <div
+        id="result"
+        class="result"
+        role="status"
+        aria-live="polite"
+      ></div>
+    </section>
+
+    <div class="config">
+      <button id="configure" type="button">
+        Configurar endereço da API
+      </button>
+    </div>
+  </main>
+
+  <script>
+    const DEFAULT_API_URL =
+      'https://script.google.com/macros/s/AKfycbzYBHnl8Su8UAxsmvGT6QzKyZRDquuw2hlPCht3xHMQL3DGwF-qPOtfqcP-m59c_w-8/exec';
+
+    let apiUrl =
+      localStorage.getItem('happyHourApiUrl') ||
+      DEFAULT_API_URL;
+
+    let scanner = null;
+    let busy = false;
+    let lastToken = '';
+    let lastAt = 0;
+    let statsLoaded = false;
+
+    const $ = function (id) {
+      return document.getElementById(id);
+    };
+
+    function clean(value) {
+      const text = String(value || '')
+        .trim()
+        .toUpperCase();
+
+      const match = text.match(
+        /HH26-[A-F0-9]{24}/
+      );
+
+      return match ? match[0] : '';
+    }
+
+    function escapeHtml(value) {
+      const element = document.createElement('div');
+      element.textContent = String(value || '');
+      return element.innerHTML;
+    }
+
+    function show(type, title, detail) {
+      const box = $('result');
+
+      box.className =
+        'result show ' + type + ' pulse';
+
+      box.innerHTML =
+        '<strong>' +
+        escapeHtml(title) +
+        '</strong>' +
+        escapeHtml(detail || '');
+
+      setTimeout(function () {
+        box.classList.remove('pulse');
+      }, 500);
+    }
+
+    function setStats(stats) {
+      if (!stats) return;
+
+      $('total').textContent =
+        typeof stats.total !== 'undefined'
+          ? stats.total
+          : '—';
+
+      $('entries').textContent =
+        typeof stats.entries !== 'undefined'
+          ? stats.entries
+          : '—';
+
+      $('pending').textContent =
+        typeof stats.pending !== 'undefined'
+          ? stats.pending
+          : '—';
+
+      statsLoaded = true;
+    }
+
+    function configured() {
+      return (
+        apiUrl.indexOf(
+          'https://script.google.com/macros/s/'
+        ) === 0 &&
+        apiUrl.slice(-5) === '/exec'
+      );
+    }
+
+    function loadStats() {
+      if (!configured()) {
+        if (!statsLoaded) {
+          show(
+            'warn',
+            'API não configurada',
+            'Configure o endereço do Apps Script.'
+          );
+        }
+
+        return;
+      }
+
+      const callbackName =
+        'happyHourStats_' +
+        Date.now().toString(36) +
+        Math.random().toString(36).slice(2, 7);
+
+      const script =
+        document.createElement('script');
+
+      let finished = false;
+
+      function cleanup() {
+        if (finished) return;
+
+        finished = true;
+
+        try {
+          delete window[callbackName];
+        } catch (error) {
+          window[callbackName] = undefined;
+        }
+
+        if (script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      }
+
+      const timeout = setTimeout(function () {
+        cleanup();
+
+        console.warn(
+          'Atualização dos totais excedeu o tempo esperado.'
+        );
+      }, 20000);
+
+      window[callbackName] = function (data) {
+        clearTimeout(timeout);
+
+        if (
+          data &&
+          typeof data.total !== 'undefined'
+        ) {
+          setStats(data);
+        } else if (!statsLoaded) {
+          show(
+            'error',
+            'Resposta inválida da API',
+            'Os totais não foram encontrados.'
+          );
+        }
+
+        cleanup();
+      };
+
+      script.onerror = function () {
+        clearTimeout(timeout);
+
+        if (!statsLoaded) {
+          show(
+            'error',
+            'Erro ao acessar a API',
+            'Verifique a implantação do Apps Script.'
+          );
+        }
+
+        cleanup();
+      };
+
+      script.src =
+        apiUrl +
+        '?action=stats' +
+        '&callback=' +
+        encodeURIComponent(callbackName) +
+        '&cache=' +
+        Date.now();
+
+      document.body.appendChild(script);
+    }
+
+    async function register(raw) {
+      const token = clean(raw);
+
+      if (!token) {
+        show(
+          'error',
+          'QR Code inválido',
+          'O código lido não pertence a este evento.'
+        );
+
+        return;
+      }
+
+      const now = Date.now();
+
+      if (
+        token === lastToken &&
+        now - lastAt < 4000
+      ) {
+        return;
+      }
+
+      lastToken = token;
+      lastAt = now;
+
+      if (!configured()) {
+        show(
+          'warn',
+          'Configure a API',
+          'Informe o endereço /exec do Apps Script.'
+        );
+
+        return;
+      }
+
+      if (busy) return;
+
+      busy = true;
+
+      show(
+        'warn',
+        'Consultando convite...',
+        'Aguarde a confirmação.'
+      );
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'text/plain;charset=utf-8'
+          },
+
+          body: JSON.stringify({
+            token: token,
+            operator: 'LEITOR WEB'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.stats) {
+          setStats(data.stats);
+        }
+
+        if (data.ok) {
+          show(
+            'ok',
+            data.message || 'Entrada confirmada!',
+            (data.name || '') +
+              ' • ' +
+              (data.unit || '')
+          );
+
+          if (navigator.vibrate) {
+            navigator.vibrate(150);
+          }
+
+        } else if (
+          data.code === 'ALREADY_USED'
+        ) {
+          show(
+            'warn',
+            data.message || 'Entrada já registrada.',
+            (data.name || '') +
+              ' • ' +
+              (data.checkedAt || '')
+          );
+
+          if (navigator.vibrate) {
+            navigator.vibrate([80, 80, 80]);
+          }
+
+        } else {
+          show(
+            'error',
+            data.message ||
+              'Não foi possível confirmar.',
+            data.detail || ''
+          );
+
+          if (navigator.vibrate) {
+            navigator.vibrate(350);
+          }
+        }
+
+      } catch (error) {
+        console.error(
+          'Erro ao registrar entrada:',
+          error
+        );
+
+        show(
+          'error',
+          'Falha de conexão',
+          'Verifique a internet e a configuração da API.'
+        );
+
+      } finally {
+        busy = false;
+      }
+    }
+
+    async function startScanner() {
+      try {
+        if (
+          typeof Html5Qrcode === 'undefined'
+        ) {
+          throw new Error(
+            'A biblioteca do leitor não foi carregada.'
+          );
+        }
+
+        $('reader').style.display = 'block';
+
+        if (!scanner) {
+          scanner = new Html5Qrcode(
+            'reader',
+            {
+              formatsToSupport: [
+                Html5QrcodeSupportedFormats.QR_CODE
+              ],
+              verbose: false
+            }
+          );
+        }
+
+        const cameraConfig = {
+          facingMode: 'environment'
+        };
+
+        const scanConfig = {
+          fps: 12,
+
+          qrbox: function (
+            viewportWidth,
+            viewportHeight
+          ) {
+            const minimumSide = Math.min(
+              viewportWidth,
+              viewportHeight
+            );
+
+            const size = Math.floor(
+              minimumSide * 0.75
+            );
+
+            return {
+              width: size,
+              height: size
+            };
+          },
+
+          aspectRatio: 1
+        };
+
+        await scanner.start(
+          cameraConfig,
+          scanConfig,
+
+          function (decodedText) {
+            register(decodedText);
+          },
+
+          function () {
+            // A câmera continua procurando.
+          }
+        );
+
+        $('start').disabled = true;
+        $('stop').disabled = false;
+
+        show(
+          'warn',
+          'Câmera ativada',
+          'Centralize o QR Code no quadrado.'
+        );
+
+      } catch (error) {
+        console.error(
+          'Erro ao iniciar câmera:',
+          error
+        );
+
+        $('reader').style.display = 'none';
+        $('start').disabled = false;
+        $('stop').disabled = true;
+
+        show(
+          'error',
+          'Não foi possível iniciar o leitor',
+          error.message ||
+            'Verifique a permissão da câmera.'
+        );
+      }
+    }
+
+    async function stopScanner() {
+      try {
+        if (
+          scanner &&
+          scanner.isScanning
+        ) {
+          await scanner.stop();
+        }
+
+        $('reader').style.display = 'none';
+        $('start').disabled = false;
+        $('stop').disabled = true;
+
+      } catch (error) {
+        console.error(
+          'Erro ao parar câmera:',
+          error
+        );
+      }
+    }
+
+    $('start').addEventListener(
+      'click',
+      startScanner
     );
 
-    if (!value) return;
+    $('stop').addEventListener(
+      'click',
+      stopScanner
+    );
 
-    apiUrl = value.trim();
-    localStorage.setItem('happyHourApiUrl', apiUrl);
+    $('manual').addEventListener(
+      'submit',
+      function (event) {
+        event.preventDefault();
+
+        register(
+          $('token').value
+        );
+
+        $('token').select();
+      }
+    );
+
+    $('configure').addEventListener(
+      'click',
+      function () {
+        const value = prompt(
+          'Cole a URL /exec da implantação do Apps Script:',
+          configured() ? apiUrl : ''
+        );
+
+        if (!value) return;
+
+        apiUrl = value.trim();
+
+        localStorage.setItem(
+          'happyHourApiUrl',
+          apiUrl
+        );
+
+        loadStats();
+
+        show(
+          'ok',
+          'API configurada',
+          'O endereço foi salvo neste navegador.'
+        );
+      }
+    );
 
     loadStats();
 
-    show(
-      'ok',
-      'API configurada',
-      'O endereço foi salvo neste navegador.'
+    setInterval(
+      loadStats,
+      15000
     );
-  });
-
-  loadStats();
-  setInterval(loadStats, 15000);
-</script>
+  </script>
 </body>
-</html> 
+</html>
