@@ -55,10 +55,71 @@
   function setStats(stats){if(!stats)return;$('total').textContent=stats.total;$('entries').textContent=stats.entries;$('pending').textContent=stats.pending}
   function configured(){return apiUrl.startsWith('https://script.google.com/macros/s/') && apiUrl.endsWith('/exec')}
 
-  async function loadStats(){
-    if(!configured()) return;
-    try{const response=await fetch(`${apiUrl}?action=stats`);setStats(await response.json())}catch(_){/* mantém o leitor disponível */}
+ function loadStats() {
+  if (!configured()) {
+    show(
+      'warn',
+      'API não configurada',
+      'Configure o endereço do Apps Script.'
+    );
+    return;
   }
+
+  const callbackName =
+    'happyHourStats_' + Date.now().toString(36);
+
+  const script = document.createElement('script');
+
+  const cleanup = () => {
+    delete window[callbackName];
+    script.remove();
+  };
+
+  const timeout = setTimeout(() => {
+    cleanup();
+
+    show(
+      'error',
+      'Não foi possível carregar os totais',
+      'A API não respondeu dentro do tempo esperado.'
+    );
+  }, 10000);
+
+  window[callbackName] = data => {
+    clearTimeout(timeout);
+    cleanup();
+
+    if (data && typeof data.total !== 'undefined') {
+      setStats(data);
+    } else {
+      show(
+        'error',
+        'Resposta inválida da API',
+        'Os totais não foram encontrados.'
+      );
+    }
+  };
+
+  script.onerror = () => {
+    clearTimeout(timeout);
+    cleanup();
+
+    show(
+      'error',
+      'Erro ao acessar a API',
+      'Verifique a implantação do Apps Script.'
+    );
+  };
+
+  script.src =
+    apiUrl +
+    '?action=stats&callback=' +
+    encodeURIComponent(callbackName) +
+    '&cache=' +
+    Date.now();
+
+  document.body.appendChild(script);
+}
 
   async function register(raw){
     const token=clean(raw);
