@@ -32,6 +32,7 @@
       min-height: 100vh;
       font-family: Arial, sans-serif;
       color: var(--white);
+
       background:
         radial-gradient(
           circle at 85% 10%,
@@ -58,9 +59,9 @@
     }
 
     header h1 {
-      font-size: clamp(24px, 6vw, 38px);
       margin: 8px 0;
       color: #f4cc72;
+      font-size: clamp(24px, 6vw, 38px);
     }
 
     header p {
@@ -76,11 +77,11 @@
     }
 
     .stat {
+      padding: 13px;
+      text-align: center;
       background: #ffffff12;
       border: 1px solid #ffffff28;
       border-radius: 14px;
-      padding: 13px;
-      text-align: center;
     }
 
     .stat strong {
@@ -89,59 +90,59 @@
     }
 
     .stat span {
-      font-size: 12px;
       color: var(--muted);
+      font-size: 12px;
     }
 
     .panel {
-      background: #ffffff;
-      color: #16324a;
-      border-radius: 18px;
       padding: 16px;
+      color: #16324a;
+      background: #ffffff;
+      border-radius: 18px;
       box-shadow: 0 18px 45px #00000066;
     }
 
     .toolbar {
       display: flex;
-      gap: 10px;
       flex-wrap: wrap;
+      gap: 10px;
       margin-bottom: 12px;
     }
 
     button,
     input {
-      font: inherit;
-      border-radius: 10px;
-      border: 1px solid #cbd5df;
       padding: 12px;
+      font: inherit;
+      border: 1px solid #cbd5df;
+      border-radius: 10px;
     }
 
     button {
-      cursor: pointer;
-      background: var(--navy);
       color: #ffffff;
-      border: none;
       font-weight: 700;
+      background: var(--navy);
+      border: none;
+      cursor: pointer;
     }
 
     button.secondary {
-      background: #e9eef3;
       color: #16324a;
+      background: #e9eef3;
     }
 
     button:disabled {
-      opacity: 0.55;
       cursor: not-allowed;
+      opacity: 0.55;
     }
 
     #reader {
       display: none;
       width: 100%;
       min-height: 280px;
-      overflow: hidden;
-      border-radius: 12px;
-      background: #0a0a0a;
       margin-bottom: 12px;
+      overflow: hidden;
+      background: #0a0a0a;
+      border-radius: 12px;
     }
 
     #reader video {
@@ -156,15 +157,15 @@
     }
 
     .manual input {
-      min-width: 0;
       flex: 1;
+      min-width: 0;
     }
 
     .result {
+      display: none;
+      padding: 14px;
       margin-top: 14px;
       border-radius: 12px;
-      padding: 14px;
-      display: none;
     }
 
     .result.show {
@@ -172,30 +173,30 @@
     }
 
     .result.ok {
-      background: #dcfce7;
       color: #166534;
+      background: #dcfce7;
     }
 
     .result.warn {
-      background: #fff4d6;
       color: #8a5a00;
+      background: #fff4d6;
     }
 
     .result.error {
-      background: #fee2e2;
       color: #991b1b;
+      background: #fee2e2;
     }
 
     .result strong {
       display: block;
-      font-size: 20px;
       margin-bottom: 4px;
+      font-size: 20px;
     }
 
     .config {
       margin-top: 16px;
-      font-size: 12px;
       color: var(--muted);
+      font-size: 12px;
       text-align: center;
     }
 
@@ -238,7 +239,10 @@
       <p>Check-in dos Professores</p>
     </header>
 
-    <section class="stats" aria-label="Resumo do evento">
+    <section
+      class="stats"
+      aria-label="Resumo do evento"
+    >
       <div class="stat">
         <strong id="total">—</strong>
         <span>TOTAL</span>
@@ -273,11 +277,15 @@
 
       <div id="reader"></div>
 
-      <form id="manual" class="manual">
+      <form
+        id="manual"
+        class="manual"
+      >
         <input
           id="token"
           type="text"
           autocomplete="off"
+          autocapitalize="characters"
           placeholder="Cole ou digite o código do convite"
         >
 
@@ -295,7 +303,10 @@
     </section>
 
     <div class="config">
-      <button id="configure" type="button">
+      <button
+        id="configure"
+        type="button"
+      >
         Configurar endereço da API
       </button>
     </div>
@@ -319,21 +330,13 @@
       return document.getElementById(id);
     };
 
-    function clean(value) {
-      const text = String(value || '')
-        .trim()
-        .toUpperCase();
-
-      const match = text.match(
-        /HH26-[A-F0-9]{24}/
-      );
-
-      return match ? match[0] : '';
-    }
-
     function escapeHtml(value) {
-      const element = document.createElement('div');
-      element.textContent = String(value || '');
+      const element =
+        document.createElement('div');
+
+      element.textContent =
+        String(value || '');
+
       return element.innerHTML;
     }
 
@@ -341,7 +344,9 @@
       const box = $('result');
 
       box.className =
-        'result show ' + type + ' pulse';
+        'result show ' +
+        type +
+        ' pulse';
 
       box.innerHTML =
         '<strong>' +
@@ -384,7 +389,120 @@
       );
     }
 
-    function loadStats() {
+    function clean(value) {
+      const text = String(value || '')
+        .trim()
+        .toUpperCase();
+
+      const match = text.match(
+        /HH26-[A-F0-9]{24}/
+      );
+
+      return match ? match[0] : '';
+    }
+
+    /*
+     * Realiza a comunicação com o Apps Script por JSONP.
+     * Isso evita o bloqueio de CORS entre GitHub Pages
+     * e Google Apps Script.
+     */
+    function callApiJsonp(action, parameters) {
+      return new Promise(function (
+        resolve,
+        reject
+      ) {
+        const callbackName =
+          'happyHourApi_' +
+          Date.now().toString(36) +
+          Math.random()
+            .toString(36)
+            .slice(2, 7);
+
+        const script =
+          document.createElement('script');
+
+        let finished = false;
+
+        function cleanup() {
+          if (finished) return;
+
+          finished = true;
+
+          try {
+            delete window[callbackName];
+          } catch (error) {
+            window[callbackName] =
+              undefined;
+          }
+
+          if (script.parentNode) {
+            script.parentNode
+              .removeChild(script);
+          }
+        }
+
+        const timeout =
+          setTimeout(function () {
+            cleanup();
+
+            reject(
+              new Error(
+                'A API não respondeu dentro do tempo esperado.'
+              )
+            );
+          }, 20000);
+
+        window[callbackName] =
+          function (data) {
+            clearTimeout(timeout);
+            cleanup();
+            resolve(data);
+          };
+
+        script.onerror = function () {
+          clearTimeout(timeout);
+          cleanup();
+
+          reject(
+            new Error(
+              'Não foi possível acessar a API.'
+            )
+          );
+        };
+
+        let url =
+          apiUrl +
+          '?action=' +
+          encodeURIComponent(action);
+
+        Object.keys(parameters || {})
+          .forEach(function (key) {
+            url +=
+              '&' +
+              encodeURIComponent(key) +
+              '=' +
+              encodeURIComponent(
+                parameters[key]
+              );
+          });
+
+        url +=
+          '&callback=' +
+          encodeURIComponent(
+            callbackName
+          ) +
+          '&cache=' +
+          Date.now();
+
+        script.src = url;
+
+        document.body.appendChild(
+          script
+        );
+      });
+    }
+
+    async function loadStats() {
       if (!configured()) {
         if (!statsLoaded) {
           show(
@@ -397,48 +515,19 @@
         return;
       }
 
-      const callbackName =
-        'happyHourStats_' +
-        Date.now().toString(36) +
-        Math.random().toString(36).slice(2, 7);
-
-      const script =
-        document.createElement('script');
-
-      let finished = false;
-
-      function cleanup() {
-        if (finished) return;
-
-        finished = true;
-
-        try {
-          delete window[callbackName];
-        } catch (error) {
-          window[callbackName] = undefined;
-        }
-
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-      }
-
-      const timeout = setTimeout(function () {
-        cleanup();
-
-        console.warn(
-          'Atualização dos totais excedeu o tempo esperado.'
-        );
-      }, 20000);
-
-      window[callbackName] = function (data) {
-        clearTimeout(timeout);
+      try {
+        const data =
+          await callApiJsonp(
+            'stats',
+            {}
+          );
 
         if (
           data &&
           typeof data.total !== 'undefined'
         ) {
           setStats(data);
+
         } else if (!statsLoaded) {
           show(
             'error',
@@ -447,32 +536,20 @@
           );
         }
 
-        cleanup();
-      };
-
-      script.onerror = function () {
-        clearTimeout(timeout);
+      } catch (error) {
+        console.error(
+          'Erro ao carregar totais:',
+          error
+        );
 
         if (!statsLoaded) {
           show(
             'error',
-            'Erro ao acessar a API',
-            'Verifique a implantação do Apps Script.'
+            'Não foi possível carregar os totais',
+            error.message
           );
         }
-
-        cleanup();
-      };
-
-      script.src =
-        apiUrl +
-        '?action=stats' +
-        '&callback=' +
-        encodeURIComponent(callbackName) +
-        '&cache=' +
-        Date.now();
-
-      document.body.appendChild(script);
+      }
     }
 
     async function register(raw) {
@@ -482,7 +559,7 @@
         show(
           'error',
           'QR Code inválido',
-          'O código lido não pertence a este evento.'
+          'O código não pertence a este evento.'
         );
 
         return;
@@ -521,21 +598,14 @@
       );
 
       try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-
-          headers: {
-            'Content-Type':
-              'text/plain;charset=utf-8'
-          },
-
-          body: JSON.stringify({
-            token: token,
-            operator: 'LEITOR WEB'
-          })
-        });
-
-        const data = await response.json();
+        const data =
+          await callApiJsonp(
+            'checkin',
+            {
+              token: token,
+              operator: 'LEITOR WEB'
+            }
+          );
 
         if (data.stats) {
           setStats(data.stats);
@@ -544,7 +614,8 @@
         if (data.ok) {
           show(
             'ok',
-            data.message || 'Entrada confirmada!',
+            data.message ||
+              'Entrada confirmada!',
             (data.name || '') +
               ' • ' +
               (data.unit || '')
@@ -559,14 +630,17 @@
         ) {
           show(
             'warn',
-            data.message || 'Entrada já registrada.',
+            data.message ||
+              'Entrada já registrada.',
             (data.name || '') +
               ' • ' +
               (data.checkedAt || '')
           );
 
           if (navigator.vibrate) {
-            navigator.vibrate([80, 80, 80]);
+            navigator.vibrate(
+              [80, 80, 80]
+            );
           }
 
         } else {
@@ -591,7 +665,8 @@
         show(
           'error',
           'Falha de conexão',
-          'Verifique a internet e a configuração da API.'
+          error.message ||
+            'Não foi possível acessar a API.'
         );
 
       } finally {
@@ -602,66 +677,54 @@
     async function startScanner() {
       try {
         if (
-          typeof Html5Qrcode === 'undefined'
+          typeof Html5Qrcode ===
+          'undefined'
         ) {
           throw new Error(
             'A biblioteca do leitor não foi carregada.'
           );
         }
 
-        $('reader').style.display = 'block';
+        $('reader').style.display =
+          'block';
 
         if (!scanner) {
-          scanner = new Html5Qrcode(
-            'reader',
-            {
-              formatsToSupport: [
-                Html5QrcodeSupportedFormats.QR_CODE
-              ],
-              verbose: false
-            }
-          );
+          scanner =
+            new Html5Qrcode(
+              'reader'
+            );
         }
 
-        const cameraConfig = {
-          facingMode: 'environment'
-        };
-
-        const scanConfig = {
-          fps: 12,
-
-          qrbox: function (
-            viewportWidth,
-            viewportHeight
-          ) {
-            const minimumSide = Math.min(
-              viewportWidth,
-              viewportHeight
-            );
-
-            const size = Math.floor(
-              minimumSide * 0.75
-            );
-
-            return {
-              width: size,
-              height: size
-            };
+        await scanner.start(
+          {
+            facingMode: 'environment'
           },
 
-          aspectRatio: 1
-        };
+          {
+            fps: 10,
 
-        await scanner.start(
-          cameraConfig,
-          scanConfig,
+            qrbox: {
+              width: 250,
+              height: 250
+            },
+
+            disableFlip: false
+          },
 
           function (decodedText) {
+            console.log(
+              'QR Code reconhecido:',
+              decodedText
+            );
+
             register(decodedText);
           },
 
           function () {
-            // A câmera continua procurando.
+            /*
+             * Leituras incompletas são ignoradas
+             * enquanto a câmera continua aberta.
+             */
           }
         );
 
@@ -680,7 +743,9 @@
           error
         );
 
-        $('reader').style.display = 'none';
+        $('reader').style.display =
+          'none';
+
         $('start').disabled = false;
         $('stop').disabled = true;
 
@@ -702,7 +767,9 @@
           await scanner.stop();
         }
 
-        $('reader').style.display = 'none';
+        $('reader').style.display =
+          'none';
+
         $('start').disabled = false;
         $('stop').disabled = true;
 
@@ -742,7 +809,9 @@
       function () {
         const value = prompt(
           'Cole a URL /exec da implantação do Apps Script:',
-          configured() ? apiUrl : ''
+          configured()
+            ? apiUrl
+            : DEFAULT_API_URL
         );
 
         if (!value) return;
@@ -753,6 +822,8 @@
           'happyHourApiUrl',
           apiUrl
         );
+
+        statsLoaded = false;
 
         loadStats();
 
